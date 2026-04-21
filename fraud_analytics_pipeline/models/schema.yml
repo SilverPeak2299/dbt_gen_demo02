@@ -1,0 +1,403 @@
+version: 2
+
+models:
+  - name: stg_cbs_transactions
+    description: Normalized core banking transactions with UTC timestamps, cleaned identifiers, and channel mappings.
+    columns:
+      - name: transaction_id_raw
+        description: Raw transaction key used as the source for the mart transaction identifier.
+        tests:
+          - not_null
+          - unique
+      - name: transaction_timestamp_utc
+        description: Transaction posting timestamp converted from AEST text to UTC.
+        tests:
+          - not_null
+      - name: account_id
+        description: Zero-trimmed account identifier used for joins across the fraud model.
+        tests:
+          - not_null
+      - name: channel_code
+        description: Standardized transaction channel code.
+      - name: transaction_amount_aud
+        description: Transaction amount converted from cents into Australian dollars.
+      - name: transaction_direction
+        description: Debit or credit indicator retained for mart filtering logic.
+      - name: merchant_category_code
+        description: Merchant category code with nulls coerced to `0000`.
+      - name: is_reversal
+        description: Boolean flag identifying reversal postings.
+      - name: source_loaded_at
+        description: Raw landing timestamp for incremental processing.
+
+  - name: stg_crm_customers
+    description: Current-state customer accounts with standardized segment codes and parsed opening dates.
+    columns:
+      - name: account_id
+        description: Zero-trimmed account identifier.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer identifier shared across accounts.
+        tests:
+          - not_null
+      - name: account_open_date
+        description: Parsed account opening date.
+      - name: account_status_code
+        description: Customer account status retained for downstream filtering.
+      - name: customer_segment_code
+        description: Standardized customer segment classification.
+
+  - name: stg_crm_kyc_assessments
+    description: Standardized KYC assessments with mapped statuses and boolean risk indicators.
+    columns:
+      - name: assessment_id
+        description: KYC assessment primary key.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Customer identifier used to select the latest KYC record.
+      - name: kyc_status
+        description: Standardized KYC status value.
+      - name: pep_flag
+        description: Boolean PEP indicator.
+      - name: adverse_media_flag
+        description: Boolean adverse media indicator.
+
+  - name: stg_dsi_session_events
+    description: Device and session signals normalized for left joins to transaction records.
+    columns:
+      - name: session_id
+        description: Digital session primary key.
+        tests:
+          - not_null
+          - unique
+      - name: transaction_id_raw
+        description: Transaction key used to associate session data with transactions.
+      - name: device_fingerprint_hash
+        description: Hashed device fingerprint signal.
+      - name: is_new_device
+        description: Standardized boolean new-device flag.
+      - name: ip_risk_score
+        description: IP risk score normalized to the 0 to 1 range.
+      - name: transaction_session_rank
+        description: Rank used to keep the first session match per transaction.
+
+  - name: stg_acm_alerts
+    description: Fraud alerts with UTC timestamps and normalized alert scores.
+    columns:
+      - name: alert_id
+        description: Alert event primary key.
+        tests:
+          - not_null
+          - unique
+      - name: transaction_id_raw
+        description: Raw transaction key linked to the alert.
+      - name: account_id
+        description: Zero-trimmed account identifier on the alert.
+      - name: alert_generated_at
+        description: Alert generation timestamp converted to UTC.
+      - name: alert_score
+        description: Alert score normalized to the 0 to 1 range.
+
+  - name: stg_acm_fraud_cases
+    description: Fraud case outcomes with UTC timestamps, standardized dispositions, and converted loss amounts.
+    columns:
+      - name: case_id
+        description: Fraud case primary key.
+        tests:
+          - not_null
+          - unique
+      - name: alert_id
+        description: Alert key used to join cases back to alerts.
+      - name: account_id
+        description: Zero-trimmed account identifier associated with the case.
+      - name: disposition_code
+        description: Standardized disposition value from the source case workflow.
+
+  - name: stg_acm_investigator_actions
+    description: Investigator action events retained to derive the latest investigator per case.
+    columns:
+      - name: action_id
+        description: Investigator action primary key.
+        tests:
+          - not_null
+          - unique
+      - name: case_id
+        description: Fraud case identifier.
+      - name: investigator_id
+        description: Internal investigator identifier retained in the mart.
+
+  - name: int_txn_velocity
+    description: Rolling 1-hour count and 24-hour amount features for debit, non-reversal transactions.
+    columns:
+      - name: transaction_id_raw
+        description: Transaction key used to join velocity features back to the transaction mart.
+        tests:
+          - not_null
+          - unique
+      - name: velocity_1h_count
+        description: Rolling one-hour transaction count for the account including the current transaction.
+      - name: velocity_24h_amount_aud
+        description: Rolling 24-hour transaction amount for the account including the current transaction.
+
+  - name: int_txn_spend_baseline
+    description: Ninety-day spending baseline features used by the customer risk profile dimension.
+    columns:
+      - name: account_id
+        description: Account identifier used to join the baseline into the customer dimension.
+        tests:
+          - not_null
+          - unique
+      - name: avg_monthly_spend_aud_3m
+        description: Average monthly spend over the last 90 days.
+      - name: dominant_txn_country
+        description: Most common merchant country observed over the last 90 days.
+
+  - name: int_customer_latest_kyc
+    description: Latest available KYC profile per customer.
+    columns:
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+          - unique
+      - name: kyc_status
+        description: Latest standardized KYC status.
+      - name: kyc_last_assessed_date
+        description: Date of the latest KYC assessment.
+      - name: pep_flag
+        description: Latest PEP indicator.
+      - name: adverse_media_flag
+        description: Latest adverse media indicator.
+
+  - name: int_customer_fraud_exposure
+    description: Confirmed fraud history aggregated to the account grain.
+    columns:
+      - name: account_id
+        description: Account identifier used to join confirmed fraud history into the customer dimension.
+        tests:
+          - not_null
+          - unique
+      - name: lifetime_confirmed_fraud_count
+        description: Count of confirmed fraud cases tied to the account.
+      - name: lifetime_confirmed_fraud_amount_aud
+        description: Sum of confirmed fraud losses for the account.
+      - name: last_fraud_confirmed_date
+        description: Most recent date on which a confirmed fraud case closed.
+
+  - name: int_alert_case_actions
+    description: Case details and latest investigator assignment joined to the alert grain.
+    columns:
+      - name: alert_id
+        description: Alert identifier used to enrich the alert mart.
+      - name: case_id
+        description: Case identifier linked to the alert.
+      - name: investigator_id
+        description: Most recent investigator employee identifier observed for the case.
+
+  - name: fct_fraud_transactions
+    description: Debit, non-reversal transaction fact enriched with session, velocity, and high-risk MCC signals.
+    columns:
+      - name: transaction_id
+        description: Primary key for the curated fraud transaction fact.
+        tests:
+          - not_null
+          - unique
+      - name: transaction_timestamp_utc
+        description: UTC transaction timestamp.
+        tests:
+          - not_null
+      - name: transaction_date
+        description: UTC calendar date derived from the transaction timestamp.
+        tests:
+          - not_null
+      - name: account_id
+        description: Account identifier joined to the customer risk profile dimension.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer_risk_profile')
+              field: account_id
+      - name: channel_code
+        description: Standardized transaction channel code.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ATM', 'POS', 'CNP', 'BRANCH', 'OTHER']
+      - name: transaction_amount_aud
+        description: Transaction amount in Australian dollars.
+        tests:
+          - not_null
+      - name: merchant_category_code
+        description: Merchant category code, with `0000` used when the source value is missing.
+      - name: merchant_id
+        description: Merchant identifier where present.
+      - name: merchant_country_code
+        description: Merchant country code in ISO alpha-3 format.
+      - name: is_international
+        description: Boolean flag derived from the merchant country code.
+        tests:
+          - not_null
+      - name: session_id
+        description: Digital session identifier where a matching session exists.
+      - name: device_fingerprint_hash
+        description: Device fingerprint hash sourced from the first matching session record.
+      - name: ip_risk_score
+        description: Third-party IP risk score normalized to 0 through 1.
+      - name: is_new_device
+        description: Boolean flag identifying whether the transaction came from a new device.
+        tests:
+          - not_null
+      - name: velocity_1h_count
+        description: Rolling one-hour transaction count for the account.
+        tests:
+          - not_null
+      - name: velocity_24h_amount_aud
+        description: Rolling 24-hour transaction amount for the account.
+        tests:
+          - not_null
+      - name: is_high_risk_mcc
+        description: Boolean flag showing whether the transaction MCC exists in the high-risk MCC reference.
+        tests:
+          - not_null
+      - name: pipeline_loaded_at
+        description: Model execution timestamp captured at materialization time.
+        tests:
+          - not_null
+
+  - name: dim_customer_risk_profile
+    description: Customer account risk profile dimension combining KYC posture, historical fraud exposure, and 90-day behavioral baselines.
+    columns:
+      - name: account_id
+        description: Primary key for the curated customer risk profile dimension.
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Internal customer identifier.
+        tests:
+          - not_null
+      - name: customer_segment_code
+        description: Standardized customer segment classification.
+        tests:
+          - not_null
+      - name: account_open_date
+        description: Account opening date.
+        tests:
+          - not_null
+      - name: account_tenure_days
+        description: Number of days between the account open date and the current date.
+        tests:
+          - not_null
+      - name: kyc_status
+        description: Latest standardized KYC status.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['VERIFIED', 'PENDING', 'FAILED', 'EXPIRED']
+      - name: kyc_last_assessed_date
+        description: Date of the latest KYC assessment.
+      - name: pep_flag
+        description: Boolean PEP flag from the latest KYC assessment.
+        tests:
+          - not_null
+      - name: adverse_media_flag
+        description: Boolean adverse media flag from the latest KYC assessment.
+        tests:
+          - not_null
+      - name: lifetime_confirmed_fraud_count
+        description: Confirmed fraud count for the account.
+        tests:
+          - not_null
+      - name: lifetime_confirmed_fraud_amount_aud
+        description: Confirmed fraud loss amount for the account.
+        tests:
+          - not_null
+      - name: last_fraud_confirmed_date
+        description: Most recent confirmed fraud closure date.
+      - name: avg_monthly_spend_aud_3m
+        description: Average monthly spend over the last 90 days.
+      - name: dominant_txn_country
+        description: Modal merchant country observed over the last 90 days.
+      - name: risk_tier
+        description: Rule-based risk tier derived from the approved business logic.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HIGH', 'MEDIUM', 'LOW']
+      - name: pipeline_loaded_at
+        description: Model execution timestamp captured at materialization time.
+        tests:
+          - not_null
+
+  - name: fct_fraud_alerts
+    description: Fraud alert fact combining alert generation, case outcomes, and latest investigator assignment.
+    columns:
+      - name: alert_id
+        description: Primary key for the curated fraud alert fact.
+        tests:
+          - not_null
+          - unique
+      - name: transaction_id
+        description: Transaction identifier tied to the alert event.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_fraud_transactions')
+              field: transaction_id
+      - name: account_id
+        description: Account identifier tied to the alert event.
+        tests:
+          - not_null
+      - name: alert_generated_at
+        description: UTC timestamp when the alert was generated.
+        tests:
+          - not_null
+      - name: alert_rule_id
+        description: Rule or model identifier that generated the alert.
+        tests:
+          - not_null
+      - name: alert_rule_description
+        description: Human-readable rule or model description where available.
+      - name: alert_score
+        description: Normalized alert score where the alert was generated by an ML model.
+      - name: alert_priority
+        description: Priority tier derived from the approved scoring and rule overrides.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HIGH', 'MEDIUM', 'LOW']
+      - name: case_id
+        description: Case identifier linked to the alert where an investigator case exists.
+      - name: case_opened_at
+        description: UTC timestamp when the linked case was opened.
+      - name: case_closed_at
+        description: UTC timestamp when the linked case was closed.
+      - name: disposition_code
+        description: Standardized case disposition code.
+        tests:
+          - accepted_values:
+              values: ['CONFIRMED', 'DECLINED', 'PENDING', 'ESCALATED']
+      - name: investigator_id
+        description: Latest investigator employee identifier recorded on the case.
+      - name: time_to_disposition_minutes
+        description: Minutes between alert generation and case closure.
+      - name: is_true_positive
+        description: Boolean flag indicating a confirmed fraud outcome.
+        tests:
+          - not_null
+      - name: is_false_positive
+        description: Boolean flag indicating a declined fraud outcome.
+        tests:
+          - not_null
+      - name: feedback_loop_eligible
+        description: Boolean flag identifying closed, labeled alerts suitable for feedback into model retraining.
+        tests:
+          - not_null
+      - name: pipeline_loaded_at
+        description: Model execution timestamp captured at materialization time.
+        tests:
+          - not_null

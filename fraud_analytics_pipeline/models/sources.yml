@@ -1,0 +1,261 @@
+version: 2
+
+sources:
+  - name: cbs_raw
+    database: fraud_analytics
+    schema: cbs_raw
+    description: Core Banking Ledger raw source mapped from the original `cbs.raw` namespace into the local Postgres prototype.
+    tables:
+      - name: transactions
+        description: Append-only ledger transaction postings used as the primary transaction-level fraud source.
+        loaded_at_field: load_timestamp
+        freshness:
+          warn_after:
+            count: 30
+            period: minute
+          error_after:
+            count: 60
+            period: minute
+        columns:
+          - name: txn_ref_no
+            description: Natural transaction key assigned by the core banking platform.
+            tests:
+              - not_null
+              - unique
+          - name: posting_datetime
+            description: ISO 8601 AEST posting timestamp stored as text and converted to UTC in staging.
+            tests:
+              - not_null
+          - name: acct_no
+            description: Zero-padded account number that maps to the enterprise account identifier.
+            tests:
+              - not_null
+          - name: txn_channel_cd
+            description: Source transaction channel code.
+          - name: txn_amt
+            description: Transaction amount in Australian cents.
+          - name: txn_dr_cr_ind
+            description: Debit or credit indicator from the customer's point of view.
+          - name: mcc
+            description: Merchant category code; may be null for ATM and branch transactions.
+          - name: merchant_ref
+            description: Merchant identifier supplied by the card scheme or bank.
+          - name: merch_country
+            description: Merchant country code in ISO 3166-1 alpha-3 format.
+          - name: reversal_ind
+            description: Reversal indicator identifying corrective postings.
+          - name: orig_txn_ref_no
+            description: Original transaction key for reversal rows.
+          - name: load_timestamp
+            description: Raw landing timestamp used for freshness and incremental processing.
+
+  - name: crm_raw
+    database: fraud_analytics
+    schema: crm_raw
+    description: Customer Profile Store raw source mapped from the original `crm.raw` namespace into the local Postgres prototype.
+    tables:
+      - name: customers
+        description: Current-state customer and account records for active and recently closed accounts.
+        loaded_at_field: snapshot_dt
+        freshness:
+          warn_after:
+            count: 1
+            period: day
+          error_after:
+            count: 2
+            period: day
+        columns:
+          - name: acct_no
+            description: Zero-padded account number and primary key of the customer source snapshot.
+            tests:
+              - not_null
+              - unique
+          - name: cust_id
+            description: Internal customer identifier shared across customer accounts.
+            tests:
+              - not_null
+          - name: acct_open_dt
+            description: Account opening date encoded as `YYYYMMDD`.
+          - name: acct_status_cd
+            description: Account status code where `A` is active and `C` is closed.
+          - name: seg_cd
+            description: Customer segment code used in mart standardization.
+          - name: product_cd
+            description: Product code for the account.
+          - name: branch_cd
+            description: Branch or domiciled office code.
+          - name: snapshot_dt
+            description: Snapshot load date.
+
+      - name: kyc_assessments
+        description: Successive KYC assessments used to determine the latest risk posture per customer.
+        loaded_at_field: assessment_dt
+        freshness:
+          warn_after:
+            count: 2
+            period: day
+          error_after:
+            count: 7
+            period: day
+        columns:
+          - name: assessment_id
+            description: Unique KYC assessment event identifier.
+            tests:
+              - not_null
+              - unique
+          - name: cust_id
+            description: Customer identifier used to join to the customer source.
+            tests:
+              - not_null
+          - name: assessment_dt
+            description: Completed assessment date used to pick the latest KYC record.
+          - name: kyc_status_cd
+            description: Source KYC outcome code.
+          - name: pep_ind
+            description: Politically exposed person indicator.
+          - name: adverse_media_ind
+            description: Adverse media screening indicator.
+          - name: sanction_screen_dt
+            description: Most recent sanctions screening date.
+          - name: analyst_id
+            description: Compliance analyst identifier retained only in staging.
+
+  - name: dsi_raw
+    database: fraud_analytics
+    schema: dsi_raw
+    description: Device and Session Intelligence raw source mapped from the original `dsi.raw` namespace into the local Postgres prototype.
+    tables:
+      - name: session_events
+        description: Digital session records joined to transactions on `session_txn_ref`.
+        loaded_at_field: load_timestamp
+        freshness:
+          warn_after:
+            count: 30
+            period: minute
+          error_after:
+            count: 60
+            period: minute
+        columns:
+          - name: session_uuid
+            description: Primary key for the digital session record.
+            tests:
+              - not_null
+              - unique
+          - name: session_txn_ref
+            description: Transaction identifier used for the left join from the transaction mart.
+          - name: session_start_ts
+            description: UTC session start timestamp.
+          - name: session_end_ts
+            description: UTC session end timestamp.
+          - name: device_fp
+            description: Hashed device fingerprint.
+          - name: new_device_flag
+            description: Source flag identifying whether the device is new for the account.
+          - name: ip_address_hash
+            description: Hashed IP address retained only in raw and staging layers.
+          - name: ip_risk_score_raw
+            description: Integer IP risk score scaled from 0 to 10000.
+          - name: geo_country_code
+            description: Country code resolved from the IP address.
+          - name: load_timestamp
+            description: Raw landing timestamp used for freshness and incremental processing.
+
+  - name: acm_raw
+    database: fraud_analytics
+    schema: acm_raw
+    description: Alert and Case Management raw source mapped from the original `acm.raw` namespace into the local Postgres prototype.
+    tables:
+      - name: alerts
+        description: Fraud alerts generated by rules and machine-learning models.
+        loaded_at_field: load_timestamp
+        freshness:
+          warn_after:
+            count: 45
+            period: minute
+          error_after:
+            count: 60
+            period: minute
+        columns:
+          - name: alert_uuid
+            description: Alert event primary key.
+            tests:
+              - not_null
+              - unique
+          - name: txn_ref_no
+            description: Transaction key that triggered the alert.
+          - name: acct_no
+            description: Zero-padded account number associated with the alert.
+          - name: alert_ts
+            description: Alert generation timestamp stored in AEST ISO 8601 string format.
+          - name: rule_cd
+            description: Rule or model identifier that generated the alert.
+          - name: rule_desc
+            description: Human-readable description of the alerting rule or model.
+          - name: ml_score
+            description: Integer ML score scaled from 0 to 10000 and null for deterministic alerts.
+          - name: alert_status_cd
+            description: Current workflow status of the alert.
+          - name: load_timestamp
+            description: Raw landing timestamp used for freshness and incremental processing.
+
+      - name: fraud_cases
+        description: Investigator case outcomes linked one-to-one to the primary triggering alert.
+        loaded_at_field: load_timestamp
+        freshness:
+          warn_after:
+            count: 60
+            period: minute
+          error_after:
+            count: 90
+            period: minute
+        columns:
+          - name: case_uuid
+            description: Fraud case primary key.
+            tests:
+              - not_null
+              - unique
+          - name: alert_uuid
+            description: Alert key linked to the case.
+          - name: acct_no
+            description: Zero-padded account number associated with the case.
+          - name: case_open_ts
+            description: AEST timestamp when the case was opened.
+          - name: case_close_ts
+            description: AEST timestamp when the case was closed.
+          - name: disposition_cd
+            description: Source disposition code used to derive the mart outcome flags.
+          - name: case_loss_amt
+            description: Loss amount in Australian cents.
+          - name: fraud_type_cd
+            description: Investigator-assigned fraud classification.
+          - name: load_timestamp
+            description: Raw landing timestamp used for freshness and incremental processing.
+
+      - name: investigator_actions
+        description: Investigator audit events used to identify the most recent investigator tied to a case.
+        loaded_at_field: load_timestamp
+        freshness:
+          warn_after:
+            count: 60
+            period: minute
+          error_after:
+            count: 90
+            period: minute
+        columns:
+          - name: action_id
+            description: Investigator action primary key.
+            tests:
+              - not_null
+              - unique
+          - name: case_uuid
+            description: Fraud case foreign key.
+          - name: investigator_emp_id
+            description: Internal investigator employee identifier.
+          - name: action_ts
+            description: UTC action timestamp.
+          - name: action_type_cd
+            description: Type of case-management action taken.
+          - name: action_notes
+            description: Free-text notes retained only in staging.
+          - name: load_timestamp
+            description: Raw landing timestamp used for freshness and incremental processing.

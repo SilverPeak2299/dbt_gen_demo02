@@ -1,0 +1,3 @@
+          - name: {{column_name}}
+            description: "{{column_description}}"
+            data_type: {{data_type}}

@@ -1,0 +1,62 @@
+name: Publish Docusaurus
+
+on:
+  push:
+    branches:
+      - {{default_branch}}
+    paths:
+      - "{{docs_path}}/**"
+      - "src/**"
+      - "static/**"
+      - "docusaurus.config.*"
+      - "sidebars.*"
+      - "package.json"
+      - "{{lockfile_path}}"
+      - ".github/workflows/{{workflow_filename}}"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: {{node_version}}
+          cache: {{package_manager}}
+
+      - name: Install dependencies
+        run: {{install_command}}
+
+      - name: Build Docusaurus
+        run: {{build_command}}
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: {{build_output_path}}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

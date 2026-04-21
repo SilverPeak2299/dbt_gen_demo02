@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: {{model_name}}
+    description: "{{model_description}}"
+    config:
+      materialized: {{materialization}}
+    columns:
+{{model_columns_yaml}}

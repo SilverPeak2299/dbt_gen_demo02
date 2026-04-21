@@ -1,0 +1,58 @@
+---
+id: {{pipeline_context_slug}}/diagrams
+title: Diagrams
+sidebar_label: Diagrams
+---
+
+# Diagrams
+
+## Pipeline Flow
+
+```mermaid
+%%{init: { 'theme': 'base', 'themeVariables': {
+  'primaryColor': '#1f9d8b',
+  'primaryTextColor': '#10211d',
+  'primaryBorderColor': '#176f63',
+  'lineColor': '#244b5a',
+  'secondaryColor': '#ffd166',
+  'tertiaryColor': '#f25f5c',
+  'clusterBkg': '#eef7f5',
+  'clusterBorder': '#9ccfc5',
+  'edgeLabelBackground': '#ffffff'
+}}}%%
+{{pipeline_flow_mermaid}}
+```
+
+## Source To Target Lineage
+
+```mermaid
+%%{init: { 'theme': 'base', 'themeVariables': {
+  'primaryColor': '#1f9d8b',
+  'primaryTextColor': '#10211d',
+  'primaryBorderColor': '#176f63',
+  'lineColor': '#244b5a',
+  'secondaryColor': '#ffd166',
+  'tertiaryColor': '#f25f5c',
+  'clusterBkg': '#eef7f5',
+  'clusterBorder': '#9ccfc5',
+  'edgeLabelBackground': '#ffffff'
+}}}%%
+{{lineage_mermaid}}
+```
+
+## Model Dependencies
+
+```mermaid
+%%{init: { 'theme': 'base', 'themeVariables': {
+  'primaryColor': '#1f9d8b',
+  'primaryTextColor': '#10211d',
+  'primaryBorderColor': '#176f63',
+  'lineColor': '#244b5a',
+  'secondaryColor': '#ffd166',
+  'tertiaryColor': '#f25f5c',
+  'clusterBkg': '#eef7f5',
+  'clusterBorder': '#9ccfc5',
+  'edgeLabelBackground': '#ffffff'
+}}}%%
+{{model_dependency_mermaid}}
+```

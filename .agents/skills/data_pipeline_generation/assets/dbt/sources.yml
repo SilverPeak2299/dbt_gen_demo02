@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: {{source_name}}
+    database: {{source_database}}
+    schema: {{source_schema}}
+    description: "{{source_description}}"
+    tables:
+      - name: {{source_table}}
+        description: "{{source_table_description}}"
+        loaded_at_field: {{loaded_at_field}}
+        freshness:
+          warn_after:
+            count: {{freshness_warn_count}}
+            period: {{freshness_warn_period}}
+          error_after:
+            count: {{freshness_error_count}}
+            period: {{freshness_error_period}}
+        columns:
+{{source_columns_yaml}}
